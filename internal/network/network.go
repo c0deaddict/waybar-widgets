@@ -76,12 +76,15 @@ func NetworkCommand() *cli.Command {
 	return &cli.Command{
 		Name:  "net",
 		Usage: "network widgets",
+		Flags: []cli.Flag{}, // TODO: add flags for warning and critical thresholds.
 		Subcommands: []*cli.Command{
 			{
 				Name:  "bandwidth_up",
 				Usage: "bandwidth upload",
 				Action: func(c *cli.Context) error {
 					iface := c.Args().First()
+					// TODO: emit JSON, with percentage (of configurable threshold?)
+					// or configure thresholds for different classes?
 					monitor(iface, func(rxRate string, txRate string) {
 						fmt.Println(txRate)
 					})
@@ -96,6 +99,17 @@ func NetworkCommand() *cli.Command {
 					monitor(iface, func(rxRate string, txRate string) {
 						fmt.Println(rxRate)
 					})
+					return nil
+				},
+			},
+			// TODO: move this to another command? critical and warning threshold are different.
+			{
+				Name:  "online",
+				Usage: "online status",
+				Action: func(c *cli.Context) error {
+					// TODO: ping 1.1.1.1
+					// and or the ipv6 equivalent
+					// NOTE: how often are we allowed to ping that endpoint before we get into trouble?
 					return nil
 				},
 			},

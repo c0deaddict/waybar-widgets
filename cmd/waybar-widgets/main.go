@@ -1,16 +1,20 @@
 package main
 
 import (
-	"log"
+	"time"
 
 	"os"
 
 	"github.com/c0deaddict/waybar-widgets/internal/network"
 	"github.com/c0deaddict/waybar-widgets/internal/pomo"
+	"github.com/rs/zerolog"
+	"github.com/rs/zerolog/log"
 	"github.com/urfave/cli/v2"
 )
 
 func main() {
+	log.Logger = log.Output(zerolog.ConsoleWriter{Out: os.Stderr, TimeFormat: time.RFC3339})
+
 	app := &cli.App{
 		Name:  "waybar-widgets",
 		Usage: "My custom waybar widgets and services",
@@ -18,10 +22,13 @@ func main() {
 		Commands: []*cli.Command{
 			pomo.PomoCommand(),
 			network.NetworkCommand(),
+			// TODO add widget which shows current sway inhibit_idle state.
+			// if any window has inhibit_idle = true then show "idle inhibitted"
+			// listen to stream of swaymsg changes?
 		},
 	}
 
 	if err := app.Run(os.Args); err != nil {
-		log.Fatalln(err)
+		log.Fatal().Err(err).Msg("app")
 	}
 }
