@@ -5,7 +5,8 @@ import (
 
 	"os"
 
-	"github.com/c0deaddict/waybar-widgets/internal/network"
+	"github.com/c0deaddict/waybar-widgets/internal/bandwidth"
+	"github.com/c0deaddict/waybar-widgets/internal/online"
 	"github.com/c0deaddict/waybar-widgets/internal/pomo"
 	"github.com/rs/zerolog"
 	"github.com/rs/zerolog/log"
@@ -21,7 +22,8 @@ func main() {
 		Flags: []cli.Flag{},
 		Commands: []*cli.Command{
 			pomo.PomoCommand(),
-			network.NetworkCommand(),
+			bandwidth.BandwidthCommand(),
+			online.OnlineCommand(),
 			// TODO add widget which shows current sway inhibit_idle state.
 			// if any window has inhibit_idle = true then show "idle inhibitted"
 			// listen to stream of swaymsg changes?

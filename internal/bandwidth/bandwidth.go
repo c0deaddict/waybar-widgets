@@ -1,4 +1,4 @@
-package network
+package bandwidth
 
 import (
 	"bytes"
@@ -72,14 +72,30 @@ func monitor(iface string, output func(string, string)) {
 	}
 }
 
-func NetworkCommand() *cli.Command {
+func BandwidthCommand() *cli.Command {
 	return &cli.Command{
-		Name:  "net",
-		Usage: "network widgets",
-		Flags: []cli.Flag{}, // TODO: add flags for warning and critical thresholds.
+		Name:  "bandwidth",
+		Usage: "network bandwidth",
+		Flags: []cli.Flag{
+			&cli.DurationFlag{
+				Name:    "update-interval",
+				Value:   3 * time.Second,
+				EnvVars: []string{"BANDWIDTH_UPDATE_INTERVAL"},
+			},
+			&cli.Uint64Flag{
+				Name:    "warning-threshold",
+				Value:   0,
+				EnvVars: []string{"BANDWIDTH_WARNING_THRESHOLD"},
+			},
+			&cli.Uint64Flag{
+				Name:    "critical-threshold",
+				Value:   0,
+				EnvVars: []string{"BANDWIDTH_CRITICAL_THRESHOLD"},
+			},
+		},
 		Subcommands: []*cli.Command{
 			{
-				Name:  "bandwidth_up",
+				Name:  "up",
 				Usage: "bandwidth upload",
 				Action: func(c *cli.Context) error {
 					iface := c.Args().First()
@@ -92,24 +108,13 @@ func NetworkCommand() *cli.Command {
 				},
 			},
 			{
-				Name:  "bandwidth_down",
+				Name:  "down",
 				Usage: "bandwidth download",
 				Action: func(c *cli.Context) error {
 					iface := c.Args().First()
 					monitor(iface, func(rxRate string, txRate string) {
 						fmt.Println(rxRate)
 					})
-					return nil
-				},
-			},
-			// TODO: move this to another command? critical and warning threshold are different.
-			{
-				Name:  "online",
-				Usage: "online status",
-				Action: func(c *cli.Context) error {
-					// TODO: ping 1.1.1.1
-					// and or the ipv6 equivalent
-					// NOTE: how often are we allowed to ping that endpoint before we get into trouble?
 					return nil
 				},
 			},
