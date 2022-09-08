@@ -13,23 +13,34 @@ import (
 	"sync"
 	"time"
 
-	waybar "github.com/c0deaddict/waybar-widgets/pkg"
+	"github.com/c0deaddict/waybar-widgets/pkg/waybar"
 	"github.com/rs/zerolog/log"
 	"github.com/urfave/cli/v2"
 )
 
 type pomoServer struct {
-	workTime       time.Duration
-	breakTime      time.Duration
-	updateInterval time.Duration
+	workTime              time.Duration
+	breakTime             time.Duration
+	updateInterval        time.Duration
+	idleTimeout           time.Duration
+	overtimeInterval      time.Duration
+	overtimeNotifications uint
 
-	mu      sync.Mutex
-	listen  net.Listener
-	clients []net.Conn
+	mu           sync.Mutex
+	listen       net.Listener
+	clients      []net.Conn
+	clientStates map[net.Conn][]string
 
-	workStart  time.Time
-	breakStart *time.Time
-	breakTotal time.Duration
+	workStart         time.Time
+	breakStart        *time.Time
+	breakTotal        time.Duration
+	notificationsSent map[uint]bool
+}
+
+type pomoUpdate struct {
+	classes    []string
+	time       time.Duration
+	percentage uint
 }
 
 func newServer(c *cli.Context) (*pomoServer, error) {
@@ -50,12 +61,14 @@ func newServer(c *cli.Context) (*pomoServer, error) {
 	}
 
 	s := pomoServer{
-		workTime:       c.Duration("work-time"),
-		breakTime:      c.Duration("break-time"),
-		updateInterval: c.Duration("update-interval"),
-		listen:         listen,
-		workStart:      time.Now(),
+		workTime:              c.Duration("work-time"),
+		breakTime:             c.Duration("break-time"),
+		updateInterval:        c.Duration("update-interval"),
+		overtimeInterval:      c.Duration("overtime-interval"),
+		overtimeNotifications: c.Uint("overtime-notifications"),
+		listen:                listen,
 	}
+	s.reset()
 
 	return &s, nil
 }
@@ -71,11 +84,6 @@ func (s *pomoServer) run() error {
 			return fmt.Errorf("accept error: %v", err)
 		}
 
-		s.mu.Lock()
-		s.clients = append(s.clients, conn)
-		// TODO: send current time.
-		s.mu.Unlock()
-
 		go s.clientLoop(conn)
 	}
 }
@@ -87,6 +95,7 @@ func (s *pomoServer) removeClient(conn net.Conn) {
 		if c == conn {
 			log.Info().Msgf("disconnecting client %v", conn)
 			s.clients = append(s.clients[:i], s.clients[i+1:]...)
+			delete(s.clientStates, conn)
 			return
 		}
 	}
@@ -111,6 +120,10 @@ func (s *pomoServer) clientLoop(conn net.Conn) {
 			s.idleStart()
 		case "idle_stop":
 			s.idleStop()
+		case "restart":
+			s.restart()
+		case "register":
+			s.register(conn)
 		default:
 			fmt.Printf("unknown command received: %s\n", command)
 		}
@@ -121,20 +134,72 @@ func (s *pomoServer) loop() {
 	ticker := time.NewTicker(1 * time.Second)
 	for {
 		<-ticker.C
-		s.broadcast()
+		s.mu.Lock()
+		s.sendUpdates()
+		s.mu.Unlock()
 	}
 }
 
+// Needs s.mu locked.
+func (s *pomoServer) reset() {
+	s.workStart = time.Now()
+	s.breakStart = nil
+	s.breakTotal = time.Duration(0)
+	s.clientStates = make(map[net.Conn][]string)
+	s.notificationsSent = make(map[uint]bool)
+}
+
 func (s *pomoServer) idleStart() {
-	fmt.Println("idle start")
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.breakStart != nil {
+		log.Warn().Msg("idle_start: break already started")
+		return
+	}
+	now := time.Now().Add(time.Duration(-1) * s.idleTimeout)
+	s.breakStart = &now
 }
 
 func (s *pomoServer) idleStop() {
-	fmt.Println("idle stop")
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.breakStart == nil {
+		log.Warn().Msg("idle_stop: break not started")
+		return
+	}
+	breakTime := time.Now().Sub(*s.breakStart)
+	if breakTime >= s.breakTime {
+		notify("Welcome back! Start new work cycle.", false)
+		s.reset()
+	} else {
+		s.breakTotal += breakTime
+		s.breakStart = nil
+	}
 }
 
-func genMessage(time time.Duration, max time.Duration, classes []string) waybar.Message {
-	seconds := uint(time.Seconds())
+func (s *pomoServer) restart() {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.reset()
+}
+
+func (s *pomoServer) register(conn net.Conn) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.clients = append(s.clients, conn)
+	s.sendUpdates()
+}
+
+func percentage(time time.Duration, max time.Duration) uint {
+	result := uint((100 * time) / max)
+	if result > 100 {
+		result = 100
+	}
+	return result
+}
+
+func genMessage(update pomoUpdate) waybar.Message {
+	seconds := uint(update.time.Seconds())
 	hours := seconds / 3600
 	minutes := (seconds % 3600) / 60
 	seconds = seconds % 60
@@ -144,49 +209,86 @@ func genMessage(time time.Duration, max time.Duration, classes []string) waybar.
 		text = fmt.Sprintf("%d:%s", hours, text)
 	}
 
-	percentage := uint((100 * time) / max)
-	if percentage > 100 {
-		percentage = 100
-	}
-
 	return waybar.Message{
-		Class:      classes,
+		Class:      update.classes,
 		Text:       text,
-		Percentage: &percentage,
+		Percentage: &update.percentage,
 		Alt:        "",
 		Tooltip:    "",
 	}
 }
 
-func (s *pomoServer) message() waybar.Message {
+// Requires s.mu locked.
+func (s *pomoServer) sendUpdates() {
+	update := pomoUpdate{}
 	if s.breakStart != nil {
-		return genMessage(time.Now().Sub(*s.breakStart), s.breakTime, []string{"break"})
+		update.classes = []string{"break"}
+		update.time = time.Now().Sub(*s.breakStart)
+		update.percentage = percentage(update.time, s.breakTime)
 	} else {
-		workTotal := time.Now().Sub(s.workStart) - s.breakTotal
-		classes := []string{"work"}
-		if workTotal > s.workTime {
-			classes = append(classes, "overtime")
+		update.time = time.Now().Sub(s.workStart) - s.breakTotal
+		update.classes = []string{"work"}
+		update.percentage = percentage(update.time, s.workTime)
+		if update.time > s.workTime {
+			update.classes = append(update.classes, "overtime")
+			s.sendOvertimeNotifications(update.time - s.workTime)
 		}
-		return genMessage(workTotal, s.workTime, classes)
 	}
-}
 
-func (s *pomoServer) broadcast() {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-
-	message, err := json.Marshal(s.message())
+	message, err := json.Marshal(genMessage(update))
 	if err != nil {
 		log.Error().Err(err).Msg("marshal json message")
 		return
 	}
+	message = append(message, '\n')
 
 	for _, c := range s.clients {
-		_, err := c.Write(append(message, '\n'))
-		if err != nil {
-			log.Error().Err(err).Msg("write to client failed")
+		if s.shouldSendUpdate(c, update) {
+			_, err := c.Write(message)
+			if err != nil {
+				log.Error().Err(err).Msg("write to client failed")
+			}
+			s.clientStates[c] = update.classes
 		}
 	}
+}
+
+func (s *pomoServer) shouldSendUpdate(conn net.Conn, update pomoUpdate) bool {
+	if update.onInterval(s.updateInterval) {
+		return true
+	}
+	if state, ok := s.clientStates[conn]; ok {
+		return !equal(state, update.classes)
+	}
+	return true
+}
+
+func (s *pomoServer) sendOvertimeNotifications(overtime time.Duration) {
+	if overtime < s.overtimeInterval {
+		s.notifyOnce(0, "End of work period. Take a break now", false)
+	} else if overtime < time.Duration(1+s.overtimeNotifications)*s.overtimeInterval {
+		id := uint(overtime / s.overtimeInterval)
+		s.notifyOnce(id, "You are on overtime. Please take a break.", true)
+	}
+}
+
+func (s *pomoServer) notifyOnce(id uint, message string, critical bool) {
+	if _, ok := s.notificationsSent[id]; !ok {
+		notify(message, critical)
+		s.notificationsSent[id] = true
+	}
+}
+
+func equal[T comparable](a, b []T) bool {
+	if len(a) != len(b) {
+		return false
+	}
+	for i, v := range a {
+		if v != b[i] {
+			return false
+		}
+	}
+	return true
 }
 
 func notify(message string, critical bool) {
@@ -198,4 +300,8 @@ func notify(message string, critical bool) {
 	if err := cmd.Run(); err != nil {
 		log.Error().Err(err).Msg("notify")
 	}
+}
+
+func (u pomoUpdate) onInterval(interval time.Duration) bool {
+	return uint(u.time.Seconds())%uint(interval.Seconds()) == 0
 }

@@ -31,6 +31,16 @@ func PomoCommand() *cli.Command {
 				Value:   5 * time.Second,
 				EnvVars: []string{"POMO_UPDATE_INTERVAL"},
 			},
+			&cli.DurationFlag{
+				Name:    "overtime-interval",
+				Value:   5 * time.Minute,
+				EnvVars: []string{"POMO_OVERTIME_INTERVAL"},
+			},
+			&cli.UintFlag{
+				Name:    "overtime-notifications",
+				Value:   3,
+				EnvVars: []string{"POMO_OVERTIME_NOTIFICATIONS"},
+			},
 		},
 		Subcommands: []*cli.Command{
 			{
@@ -48,34 +58,28 @@ func PomoCommand() *cli.Command {
 				Name:  "widget",
 				Usage: "widget client",
 				Action: func(c *cli.Context) error {
-					client, err := newClient(c)
-					if err != nil {
-						return err
-					}
-					client.stream()
-					return nil
+					return widgetClient(c)
 				},
 			},
 			{
 				Name:  "idle_start",
 				Usage: "signal idle start",
 				Action: func(c *cli.Context) error {
-					client, err := newClient(c)
-					if err != nil {
-						return err
-					}
-					return client.send("idle_start")
+					return sendCommand(c, "idle_start")
 				},
 			},
 			{
 				Name:  "idle_stop",
 				Usage: "signal idle stop",
 				Action: func(c *cli.Context) error {
-					client, err := newClient(c)
-					if err != nil {
-						return err
-					}
-					return client.send("idle_stop")
+					return sendCommand(c, "idle_stop")
+				},
+			},
+			{
+				Name:  "restart",
+				Usage: "restart timer",
+				Action: func(c *cli.Context) error {
+					return sendCommand(c, "restart")
 				},
 			},
 		},

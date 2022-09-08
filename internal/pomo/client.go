@@ -24,6 +24,29 @@ func newClient(c *cli.Context) (*pomoClient, error) {
 	return &pomoClient{conn}, nil
 }
 
+func sendCommand(c *cli.Context, command string) error {
+	client, err := newClient(c)
+	if err != nil {
+		return err
+	}
+	err = client.send(command)
+	client.close()
+	return err
+}
+
+func widgetClient(c *cli.Context) error {
+	client, err := newClient(c)
+	if err != nil {
+		return err
+	}
+	err = client.send("register")
+	if err != nil {
+		return err
+	}
+	client.stream()
+	return nil
+}
+
 func (c *pomoClient) send(command string) error {
 	_, err := c.conn.Write([]byte(command + "\n"))
 	return err
@@ -40,6 +63,10 @@ func (c *pomoClient) stream() {
 			break
 		}
 
-		fmt.Println(line)
+		os.Stdout.Write([]byte(line))
 	}
+}
+
+func (c *pomoClient) close() {
+	c.conn.Close()
 }
