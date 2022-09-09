@@ -24,9 +24,6 @@ func main() {
 			pomo.PomoCommand(),
 			bandwidth.BandwidthCommand(),
 			online.OnlineCommand(),
-			// TODO add widget which shows current sway inhibit_idle state.
-			// if any window has inhibit_idle = true then show "idle inhibitted"
-			// listen to stream of swaymsg changes?
 		},
 	}
 
