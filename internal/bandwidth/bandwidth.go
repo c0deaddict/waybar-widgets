@@ -115,7 +115,7 @@ func (w widget) emit(rate uint64) {
 	if w.maximum != 0 {
 		percentage := uint(100 * (float64(rate) / float64(w.maximum)))
 		if percentage > 100 {
-			percentage = 0
+			percentage = 100
 		}
 		message.Percentage = &percentage
 	}

@@ -8,6 +8,7 @@ import (
 	"github.com/c0deaddict/waybar-widgets/internal/bandwidth"
 	"github.com/c0deaddict/waybar-widgets/internal/online"
 	"github.com/c0deaddict/waybar-widgets/internal/pomo"
+	"github.com/c0deaddict/waybar-widgets/internal/sway"
 	"github.com/rs/zerolog"
 	"github.com/rs/zerolog/log"
 	"github.com/urfave/cli/v2"
@@ -24,6 +25,7 @@ func main() {
 			pomo.PomoCommand(),
 			bandwidth.BandwidthCommand(),
 			online.OnlineCommand(),
+			sway.SwayCommand(),
 		},
 	}
 

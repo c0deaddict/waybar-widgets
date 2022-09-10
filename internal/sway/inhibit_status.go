@@ -6,6 +6,7 @@ import (
 
 	"github.com/joshuarubin/go-sway"
 	gosway "github.com/joshuarubin/go-sway"
+	"github.com/urfave/cli/v2"
 )
 
 type handler struct {
@@ -20,7 +21,6 @@ func (h handler) Window(ctx context.Context, e sway.WindowEvent) {
 // if any window has inhibit_idle = true then show "idle inhibitted"
 // listen to stream of swaymsg changes?
 func main() {
-
 	h := handler{
 		EventHandler: gosway.NoOpEventHandler(),
 	}
@@ -38,4 +38,15 @@ func main() {
 	fmt.Println(node)
 
 	gosway.Subscribe(ctx, h, sway.EventTypeWindow)
+}
+
+func SwayCommand() *cli.Command {
+	return &cli.Command{
+		Name:  "sway",
+		Usage: "sway",
+		Flags: []cli.Flag{},
+		Action: func(c *cli.Context) error {
+			return nil
+		},
+	}
 }
