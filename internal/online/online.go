@@ -1,9 +1,7 @@
 package online
 
 import (
-	"encoding/json"
 	"fmt"
-	"os"
 	"strconv"
 	"time"
 
@@ -40,13 +38,10 @@ func emitUpdate(text string, class string) {
 		Tooltip:    "",
 		Alt:        class,
 	}
-	data, err := json.Marshal(message)
+	err := message.Emit()
 	if err != nil {
-		log.Error().Err(err).Msg("marshal json")
-		return
+		log.Error().Err(err).Msg("emit")
 	}
-	data = append(data, '\n')
-	os.Stdout.Write(data)
 }
 
 func (w widget) run() error {

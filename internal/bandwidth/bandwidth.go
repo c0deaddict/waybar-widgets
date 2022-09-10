@@ -9,11 +9,13 @@ import (
 	"strings"
 	"time"
 
+	"github.com/c0deaddict/waybar-widgets/pkg/waybar"
+	"github.com/rs/zerolog/log"
 	"github.com/urfave/cli/v2"
 )
 
-// https://github.com/cmprmsd/sway-netusage/blob/master/waybar-netusage.go
-// stats fetches the cumulative rx/tx bytes for network interface iface
+// source: https://github.com/cmprmsd/sway-netusage/blob/master/waybar-netusage.go
+// stats fetches the cumulative rx/tx bytes for network interface iface.
 func stats(iface string) (rx, tx uint64) {
 	b, err := ioutil.ReadFile("/proc/net/dev")
 	if err != nil {
@@ -41,34 +43,85 @@ func stats(iface string) (rx, tx uint64) {
 	return 0, 0
 }
 
-// format converts a number of bytes in KiB or MiB.
-func format(counter, prevCounter uint64, window float64) string {
-	if prevCounter == 0 {
-		return "B"
+func format(rate float64) string {
+	if rate < 1024 {
+		return fmt.Sprintf("%6.1f  B/s", rate)
+	} else if rate < 1024*1024 {
+		return fmt.Sprintf("%6.1f kB/s", rate/1024)
+	} else if rate < 1024*1024*1024 {
+		return fmt.Sprintf("%6.1f MB/s", rate/1024/1024)
+	} else {
+		return fmt.Sprintf("%6.1f GB/s", rate/1024/1024/1024)
 	}
-	r := float64(counter-prevCounter) / window
-	if r < 1024 {
-		return fmt.Sprintf("%.0f B", r)
-	}
-	if r < 1024*1024 {
-		return fmt.Sprintf("%.0f KiB", r/1024)
-	}
-	return fmt.Sprintf("%.1f MiB", r/1024/1024)
 }
 
-func monitor(iface string, output func(string, string)) {
-	prevRx, prevTx := stats(iface)
+type widget struct {
+	iface    string
+	rx       bool
+	interval time.Duration
+	warning  uint64
+	critical uint64
+	maximum  uint64
+}
+
+func newWidget(c *cli.Context, iface string, rx bool) widget {
+	return widget{
+		iface:    iface,
+		rx:       rx,
+		interval: c.Duration("interval"),
+		warning:  c.Uint64("warning"),
+		critical: c.Uint64("critical"),
+		maximum:  c.Uint64("maximum"),
+	}
+}
+
+func (w widget) run() {
+	w.emit(0)
+	prevRx, prevTx := stats(w.iface)
 	prev := time.Now()
 	for {
-		time.Sleep(1 * time.Second)
+		time.Sleep(w.interval)
 		now := time.Now()
 		window := now.Sub(prev).Seconds()
 		prev = now
-		rx, tx := stats(iface)
-		rxRate := format(rx, prevRx, window)
-		txRate := format(tx, prevTx, window)
+		rx, tx := stats(w.iface)
+		var bytes uint64
+		if w.rx {
+			bytes = rx - prevRx
+		} else {
+			bytes = tx - prevTx
+		}
 		prevRx, prevTx = rx, tx
-		output(rxRate, txRate)
+
+		rate := uint64(float64(bytes) / window)
+		w.emit(rate)
+	}
+}
+
+func (w widget) emit(rate uint64) {
+	message := waybar.Message{
+		Class:   []string{},
+		Text:    format(float64(rate)),
+		Tooltip: "",
+		Alt:     "",
+	}
+
+	if w.critical != 0 && rate > w.critical {
+		message.Class = []string{"critical"}
+	} else if w.warning != 0 && rate > w.warning {
+		message.Class = []string{"warning"}
+	}
+
+	if w.maximum != 0 {
+		percentage := uint(100 * (float64(rate) / float64(w.maximum)))
+		if percentage > 100 {
+			percentage = 0
+		}
+		message.Percentage = &percentage
+	}
+
+	if err := message.Emit(); err != nil {
+		log.Error().Err(err).Msg("emit")
 	}
 }
 
@@ -78,19 +131,31 @@ func BandwidthCommand() *cli.Command {
 		Usage: "network bandwidth",
 		Flags: []cli.Flag{
 			&cli.DurationFlag{
-				Name:    "update-interval",
+				Name:    "interval",
 				Value:   3 * time.Second,
-				EnvVars: []string{"BANDWIDTH_UPDATE_INTERVAL"},
+				Aliases: []string{"i"},
+				EnvVars: []string{"BANDWIDTH_INTERVAL"},
 			},
 			&cli.Uint64Flag{
-				Name:    "warning-threshold",
+				Name:    "warning",
+				Usage:   "warning rate in bytes/second",
 				Value:   0,
-				EnvVars: []string{"BANDWIDTH_WARNING_THRESHOLD"},
+				Aliases: []string{"w"},
+				EnvVars: []string{"BANDWIDTH_WARNING"},
 			},
 			&cli.Uint64Flag{
-				Name:    "critical-threshold",
+				Name:    "critical",
+				Usage:   "critical rate in bytes/second",
 				Value:   0,
-				EnvVars: []string{"BANDWIDTH_CRITICAL_THRESHOLD"},
+				Aliases: []string{"c"},
+				EnvVars: []string{"BANDWIDTH_CRITICAL"},
+			},
+			&cli.Uint64Flag{
+				Name:    "maximum",
+				Usage:   "maximum rate on the interface",
+				Value:   0,
+				Aliases: []string{"m"},
+				EnvVars: []string{"BANDWIDTH_MAXIMUM"},
 			},
 		},
 		Subcommands: []*cli.Command{
@@ -99,11 +164,7 @@ func BandwidthCommand() *cli.Command {
 				Usage: "bandwidth upload",
 				Action: func(c *cli.Context) error {
 					iface := c.Args().First()
-					// TODO: emit JSON, with percentage (of configurable threshold?)
-					// or configure thresholds for different classes?
-					monitor(iface, func(rxRate string, txRate string) {
-						fmt.Println(txRate)
-					})
+					newWidget(c, iface, false).run()
 					return nil
 				},
 			},
@@ -112,9 +173,7 @@ func BandwidthCommand() *cli.Command {
 				Usage: "bandwidth download",
 				Action: func(c *cli.Context) error {
 					iface := c.Args().First()
-					monitor(iface, func(rxRate string, txRate string) {
-						fmt.Println(rxRate)
-					})
+					newWidget(c, iface, true).run()
 					return nil
 				},
 			},
