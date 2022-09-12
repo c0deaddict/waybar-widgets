@@ -64,6 +64,7 @@ func newServer(c *cli.Context) (*pomoServer, error) {
 		workTime:              c.Duration("work-time"),
 		breakTime:             c.Duration("break-time"),
 		updateInterval:        c.Duration("update-interval"),
+		idleTimeout:           c.Duration("idle-timeout"),
 		overtimeInterval:      c.Duration("overtime-interval"),
 		overtimeNotifications: c.Uint("overtime-notifications"),
 		listen:                listen,

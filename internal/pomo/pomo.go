@@ -32,6 +32,11 @@ func PomoCommand() *cli.Command {
 				EnvVars: []string{"POMO_UPDATE_INTERVAL"},
 			},
 			&cli.DurationFlag{
+				Name:    "idle-timeout",
+				Value:   30 * time.Second,
+				EnvVars: []string{"POMO_IDLE_TIMEOUT"},
+			},
+			&cli.DurationFlag{
 				Name:    "overtime-interval",
 				Value:   5 * time.Minute,
 				EnvVars: []string{"POMO_OVERTIME_INTERVAL"},
