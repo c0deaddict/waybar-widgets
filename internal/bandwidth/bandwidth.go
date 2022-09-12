@@ -1,9 +1,9 @@
 package bandwidth
 
 import (
-	"bytes"
+	"bufio"
 	"fmt"
-	"io/ioutil"
+	"os"
 	"regexp"
 	"strconv"
 	"strings"
@@ -14,44 +14,64 @@ import (
 	"github.com/urfave/cli/v2"
 )
 
-// source: https://github.com/cmprmsd/sway-netusage/blob/master/waybar-netusage.go
-// stats fetches the cumulative rx/tx bytes for network interface iface.
-func stats(iface string) (rx, tx uint64) {
-	b, err := ioutil.ReadFile("/proc/net/dev")
+type ifaceStats struct {
+	rx, tx uint64
+	state  string
+}
+
+func linkState(iface string) bool {
+	filename := fmt.Sprintf("/sys/class/net/%s/operstate", iface)
+	b, err := os.ReadFile(filename)
 	if err != nil {
-		return 0, 0
+		log.Error().Err(err).Msgf("read %s", filename)
+		return false
 	}
-	buff := bytes.NewBuffer(b)
-	for l, err := buff.ReadString('\n'); err == nil; {
-		l = strings.Trim(l, " \n")
-		if !strings.HasPrefix(l, iface) {
-			l, err = buff.ReadString('\n')
+	return strings.HasPrefix(string(b), "up")
+}
+
+func stats(iface string) ifaceStats {
+	res := ifaceStats{0, 0, "disabled"}
+	file, err := os.Open("/proc/net/dev")
+	if err != nil {
+		log.Error().Err(err).Msg("open /proc/net/dev")
+		return res
+	}
+	defer file.Close()
+
+	s := bufio.NewScanner(file)
+	re := regexp.MustCompile(" +")
+	for s.Scan() {
+		line := strings.TrimSpace(s.Text())
+		if !strings.HasPrefix(line, iface+":") {
 			continue
 		}
-		re := regexp.MustCompile(" +")
-		s := strings.Split(re.ReplaceAllString(l, " "), " ")
-		rx, err := strconv.ParseUint(s[1], 10, 64)
-		if err != nil {
-			return 0, 0
+		if linkState(iface) {
+			res.state = "up"
+		} else {
+			res.state = "down"
 		}
-		tx, err := strconv.ParseUint(s[9], 10, 64)
+		parts := strings.Split(re.ReplaceAllString(line, " "), " ")
+		res.rx, err = strconv.ParseUint(parts[1], 10, 64)
 		if err != nil {
-			return 0, 0
+			log.Error().Err(err).Msg("parse rx")
 		}
-		return rx, tx
+		res.tx, err = strconv.ParseUint(parts[9], 10, 64)
+		if err != nil {
+			log.Error().Err(err).Msg("parse tx")
+		}
 	}
-	return 0, 0
+	return res
 }
 
 func format(rate float64) string {
 	if rate < 1024 {
-		return fmt.Sprintf("%6.1f  B/s", rate)
+		return fmt.Sprintf("%.0f B/s", rate)
 	} else if rate < 1024*1024 {
-		return fmt.Sprintf("%6.1f kB/s", rate/1024)
+		return fmt.Sprintf("%.1f kB/s", rate/1024)
 	} else if rate < 1024*1024*1024 {
-		return fmt.Sprintf("%6.1f MB/s", rate/1024/1024)
+		return fmt.Sprintf("%.1f MB/s", rate/1024/1024)
 	} else {
-		return fmt.Sprintf("%6.1f GB/s", rate/1024/1024/1024)
+		return fmt.Sprintf("%.1f GB/s", rate/1024/1024/1024)
 	}
 }
 
@@ -76,31 +96,32 @@ func newWidget(c *cli.Context, iface string, rx bool) widget {
 }
 
 func (w widget) run() {
-	w.emit(0)
-	prevRx, prevTx := stats(w.iface)
-	prev := time.Now()
+	prev := stats(w.iface)
+	w.emit(0, prev.state)
+	prevTime := time.Now()
 	for {
 		time.Sleep(w.interval)
 		now := time.Now()
-		window := now.Sub(prev).Seconds()
-		prev = now
-		rx, tx := stats(w.iface)
+		window := now.Sub(prevTime).Seconds()
+		prevTime = now
+
+		cur := stats(w.iface)
 		var bytes uint64
 		if w.rx {
-			bytes = rx - prevRx
+			bytes = cur.rx - prev.rx
 		} else {
-			bytes = tx - prevTx
+			bytes = cur.tx - prev.tx
 		}
-		prevRx, prevTx = rx, tx
+		prev = cur
 
 		rate := uint64(float64(bytes) / window)
-		w.emit(rate)
+		w.emit(rate, cur.state)
 	}
 }
 
-func (w widget) emit(rate uint64) {
+func (w widget) emit(rate uint64, state string) {
 	message := waybar.Message{
-		Class:   []string{},
+		Class:   []string{state},
 		Text:    format(float64(rate)),
 		Tooltip: "",
 		Alt:     "",
