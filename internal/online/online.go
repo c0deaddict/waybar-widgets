@@ -16,9 +16,6 @@ type widget struct {
 	interval         time.Duration
 	warningThreshold int
 	offlineThreshold int
-
-	missedPings int
-	lastSeq     int
 }
 
 func newWidget(c *cli.Context) widget {
@@ -45,34 +42,52 @@ func emitUpdate(text string, class string) {
 }
 
 func (w widget) run() error {
+	ch := make(chan ping.Packet)
+	go w.loop(ch)
+
 	pinger, err := ping.NewPinger(w.host)
 	if err != nil {
 		return fmt.Errorf("pinger: %v", err)
 	}
 
 	pinger.Interval = w.interval
-	pinger.OnSend = func(pkg *ping.Packet) {
-		if w.lastSeq == pkg.Seq-1 {
-			w.missedPings = 0
-		} else {
-			w.missedPings += 1
-			if w.missedPings >= w.warningThreshold {
+	pinger.OnRecv = func(pkg *ping.Packet) {
+		ch <- *pkg
+	}
+
+	// Running pinger can fail if there is no network, retry until it succeeds.
+	for {
+		err := pinger.Run()
+		if err == nil {
+			return nil
+		}
+		log.Error().Err(err).Msg("pinger run")
+		time.Sleep(w.interval)
+	}
+
+}
+
+func (w widget) loop(ch chan ping.Packet) {
+	missedPings := 0
+	for {
+		select {
+		case pkg := <-ch:
+			missedPings = 0
+			text := fmt.Sprintf("%.1fms", pkg.Rtt.Seconds()*1000)
+			emitUpdate(text, "online")
+
+		case <-time.After(w.interval):
+			missedPings += 1
+			if missedPings >= w.warningThreshold {
 				class := "warning"
-				text := strconv.Itoa(w.missedPings)
-				if w.missedPings >= w.offlineThreshold {
+				text := strconv.Itoa(missedPings)
+				if missedPings >= w.offlineThreshold {
 					class = "offline"
 				}
 				emitUpdate(text, class)
 			}
 		}
 	}
-	pinger.OnRecv = func(pkg *ping.Packet) {
-		w.lastSeq = pkg.Seq
-		text := fmt.Sprintf("%.1fms", pkg.Rtt.Seconds()*1000)
-		emitUpdate(text, "online")
-	}
-
-	return pinger.Run()
 }
 
 func OnlineCommand() *cli.Command {
