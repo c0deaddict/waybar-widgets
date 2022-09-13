@@ -1,4 +1,4 @@
-{ lib, buildGoModule, makeWrapper, libnotify }:
+{ lib, buildGoModule, makeWrapper, libnotify, zfs }:
 
 buildGoModule rec {
   pname = "waybar-widgets";
@@ -6,7 +6,7 @@ buildGoModule rec {
 
   src = ../..;
 
-  vendorSha256 = "sha256-0hHEallm8Z3yN3Zf0cCWrxPi5RsBHpySfW7t4id858c=";
+  vendorSha256 = "sha256-SaXmFVfb+BHrPh3gYA3C3dheZn83Cz6ShWigbzEedZE=";
 
   subPackages = [ "cmd/waybar-widgets" ];
 
@@ -14,7 +14,7 @@ buildGoModule rec {
 
   postInstall = ''
     wrapProgram $out/bin/waybar-widgets \
-      --prefix PATH : ${lib.makeBinPath [libnotify]}
+      --prefix PATH : ${lib.makeBinPath [libnotify zfs]}
   '';
 
   meta = with lib; {

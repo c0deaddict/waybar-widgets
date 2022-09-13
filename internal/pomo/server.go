@@ -13,9 +13,11 @@ import (
 	"sync"
 	"time"
 
-	"github.com/c0deaddict/waybar-widgets/pkg/waybar"
+	"github.com/coreos/go-systemd/activation"
 	"github.com/rs/zerolog/log"
 	"github.com/urfave/cli/v2"
+
+	"github.com/c0deaddict/waybar-widgets/pkg/waybar"
 )
 
 type pomoServer struct {
@@ -27,7 +29,7 @@ type pomoServer struct {
 	overtimeNotifications uint
 
 	mu           sync.Mutex
-	listen       net.Listener
+	listener     net.Listener
 	clients      []net.Conn
 	clientStates map[net.Conn][]string
 
@@ -44,22 +46,6 @@ type pomoUpdate struct {
 }
 
 func newServer(c *cli.Context) (*pomoServer, error) {
-	socketPath := os.ExpandEnv(c.String("socket"))
-	err := os.MkdirAll(path.Dir(socketPath), os.ModePerm)
-	if err != nil {
-		return nil, fmt.Errorf("ensure socket path parent dirs: %v", err)
-	}
-
-	err = os.RemoveAll(socketPath)
-	if err != nil {
-		return nil, fmt.Errorf("unlink socket: %v", err)
-	}
-
-	listen, err := net.Listen("unix", socketPath)
-	if err != nil {
-		return nil, fmt.Errorf("listen error: %v", err)
-	}
-
 	s := pomoServer{
 		workTime:              c.Duration("work-time"),
 		breakTime:             c.Duration("break-time"),
@@ -67,20 +53,47 @@ func newServer(c *cli.Context) (*pomoServer, error) {
 		idleTimeout:           c.Duration("idle-timeout"),
 		overtimeInterval:      c.Duration("overtime-interval"),
 		overtimeNotifications: c.Uint("overtime-notifications"),
-		listen:                listen,
 	}
+
+	listeners, err := activation.Listeners()
+	if err != nil {
+		return nil, fmt.Errorf("activation listeners: %v", err)
+	}
+
+	if len(listeners) != 0 {
+		// Use listener from SystemD socket activation.
+		log.Info().Msg("using socket activation")
+		s.listener = listeners[0]
+	} else {
+		socketPath := os.ExpandEnv(c.String("socket"))
+		err := os.MkdirAll(path.Dir(socketPath), os.ModePerm)
+		if err != nil {
+			return nil, fmt.Errorf("ensure socket path parent dirs: %v", err)
+		}
+
+		err = os.RemoveAll(socketPath)
+		if err != nil {
+			return nil, fmt.Errorf("unlink socket: %v", err)
+		}
+
+		s.listener, err = net.Listen("unix", socketPath)
+		if err != nil {
+			return nil, fmt.Errorf("listen error: %v", err)
+		}
+	}
+
 	s.reset()
 
 	return &s, nil
 }
 
 func (s *pomoServer) run() error {
-	defer s.listen.Close()
+	defer s.listener.Close()
 
 	go s.loop()
 
 	for {
-		conn, err := s.listen.Accept()
+		conn, err := s.listener.Accept()
 		if err != nil {
 			return fmt.Errorf("accept error: %v", err)
 		}
