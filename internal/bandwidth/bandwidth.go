@@ -127,9 +127,9 @@ func (w widget) emit(rate uint64, state string) {
 		Alt:     "",
 	}
 
-	if w.critical != 0 && rate > w.critical {
+	if w.critical != 0 && rate >= w.critical {
 		message.Class = []string{"critical"}
-	} else if w.warning != 0 && rate > w.warning {
+	} else if w.warning != 0 && rate >= w.warning {
 		message.Class = []string{"warning"}
 	}
 

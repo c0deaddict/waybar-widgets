@@ -5,13 +5,15 @@ import (
 
 	"os"
 
+	"github.com/rs/zerolog"
+	"github.com/rs/zerolog/log"
+	"github.com/urfave/cli/v2"
+
 	"github.com/c0deaddict/waybar-widgets/internal/bandwidth"
 	"github.com/c0deaddict/waybar-widgets/internal/online"
 	"github.com/c0deaddict/waybar-widgets/internal/pomo"
 	"github.com/c0deaddict/waybar-widgets/internal/sway"
-	"github.com/rs/zerolog"
-	"github.com/rs/zerolog/log"
-	"github.com/urfave/cli/v2"
+	"github.com/c0deaddict/waybar-widgets/internal/zpool"
 )
 
 func main() {
@@ -26,6 +28,7 @@ func main() {
 			bandwidth.BandwidthCommand(),
 			online.OnlineCommand(),
 			sway.SwayCommand(),
+			zpool.ZpoolCommand(),
 		},
 	}
 
