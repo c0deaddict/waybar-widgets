@@ -31,7 +31,7 @@ type pomoServer struct {
 	mu           sync.Mutex
 	listener     net.Listener
 	clients      []net.Conn
-	clientStates map[net.Conn][]string
+	clientStates map[net.Conn]string
 
 	workStart         time.Time
 	breakStart        *time.Time
@@ -40,7 +40,7 @@ type pomoServer struct {
 }
 
 type pomoUpdate struct {
-	classes    []string
+	class      string
 	time       time.Duration
 	percentage uint
 }
@@ -159,7 +159,7 @@ func (s *pomoServer) reset() {
 	s.workStart = time.Now()
 	s.breakStart = nil
 	s.breakTotal = time.Duration(0)
-	s.clientStates = make(map[net.Conn][]string)
+	s.clientStates = make(map[net.Conn]string)
 	s.notificationsSent = make(map[uint]bool)
 }
 
@@ -224,10 +224,10 @@ func genMessage(update pomoUpdate) waybar.Message {
 	}
 
 	return waybar.Message{
-		Class:      update.classes,
+		Class:      []string{update.class},
 		Text:       text,
 		Percentage: &update.percentage,
-		Alt:        "",
+		Alt:        update.class,
 		Tooltip:    "",
 	}
 }
@@ -236,15 +236,15 @@ func genMessage(update pomoUpdate) waybar.Message {
 func (s *pomoServer) sendUpdates() {
 	update := pomoUpdate{}
 	if s.breakStart != nil {
-		update.classes = []string{"break"}
+		update.class = "break"
 		update.time = time.Now().Sub(*s.breakStart)
 		update.percentage = percentage(update.time, s.breakTime)
 	} else {
 		update.time = time.Now().Sub(s.workStart) - s.breakTotal
-		update.classes = []string{"work"}
+		update.class = "work"
 		update.percentage = percentage(update.time, s.workTime)
 		if update.time > s.workTime {
-			update.classes = append(update.classes, "overtime")
+			update.class = "overtime"
 			s.sendOvertimeNotifications(update.time - s.workTime)
 		}
 	}
@@ -262,7 +262,7 @@ func (s *pomoServer) sendUpdates() {
 			if err != nil {
 				log.Error().Err(err).Msg("write to client failed")
 			}
-			s.clientStates[c] = update.classes
+			s.clientStates[c] = update.class
 		}
 	}
 }
@@ -272,7 +272,7 @@ func (s *pomoServer) shouldSendUpdate(conn net.Conn, update pomoUpdate) bool {
 		return true
 	}
 	if state, ok := s.clientStates[conn]; ok {
-		return !equal(state, update.classes)
+		return state != update.class
 	}
 	return true
 }
