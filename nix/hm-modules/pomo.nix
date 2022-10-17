@@ -38,7 +38,7 @@ in
   };
 
   config = mkIf cfg.enable {
-    services.pomo.settings.POMO_IDLE_TIMEOUT = "${cfg.idleTimeout}s";
+    services.pomo.settings.POMO_IDLE_TIMEOUT = "${toString cfg.idleTimeout}s";
 
     systemd.user.services.pomo = {
       Unit = {
