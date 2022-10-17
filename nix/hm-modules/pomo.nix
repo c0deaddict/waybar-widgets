@@ -6,7 +6,7 @@ let
 
   cfg = config.services.pomo;
 
-  environmentsFile = pkgs.writeText "pomo.env"
+  environmentFile = pkgs.writeText "pomo.env"
     (concatStringsSep "\n" (mapAttrsToList (k: v: "${k}=${v}" cfg.settings)));
 
   pomo = "${cfg.package}/bin/waybar-widgets pomo";
