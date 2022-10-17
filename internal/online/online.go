@@ -45,9 +45,16 @@ func (w widget) run() error {
 	ch := make(chan ping.Packet)
 	go w.loop(ch)
 
-	pinger, err := ping.NewPinger(w.host)
-	if err != nil {
-		return fmt.Errorf("pinger: %v", err)
+	var pinger *ping.Pinger
+	for {
+		var err error
+		pinger, err = ping.NewPinger(w.host)
+		if err == nil {
+			break
+		} else {
+			log.Error().Err(err).Msg("new pinger")
+			time.Sleep(w.interval)
+		}
 	}
 
 	pinger.Interval = w.interval
@@ -64,7 +71,6 @@ func (w widget) run() error {
 		log.Error().Err(err).Msg("pinger run")
 		time.Sleep(w.interval)
 	}
-
 }
 
 func (w widget) loop(ch chan ping.Packet) {
