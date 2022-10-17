@@ -7,7 +7,7 @@ let
   cfg = config.services.pomo;
 
   environmentFile = pkgs.writeText "pomo.env"
-    (concatStringsSep "\n" (mapAttrsToList (k: v: "${k}=${v}" cfg.settings)));
+    (concatStringsSep "\n" (mapAttrsToList (k: v: "${k}=${v}") cfg.settings));
 
   pomo = "${cfg.package}/bin/waybar-widgets pomo";
 
