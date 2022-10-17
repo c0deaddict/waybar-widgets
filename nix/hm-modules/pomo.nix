@@ -50,7 +50,7 @@ in
       Service = {
         Type = "simple";
         ExecStart = "${pomo} server";
-        EnvironmentFile = [ environmentFile ];
+        EnvironmentFile = [ (toString environmentFile) ];
       };
     };
 
