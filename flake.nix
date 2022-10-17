@@ -10,10 +10,16 @@
     in
     {
       overlay = final: prev: import ./nix/pkgs/default.nix { pkgs = final; };
-      packages = forAllSystems (system:
-        import ./nix/pkgs/default.nix rec {
-          pkgs = import nixpkgs { inherit system; };
-        });
-      defaultPackage = forAllSystems (system: self.packages.${system}.waybar-widgets);
+
+      hmModules.pomo = import ./nix/hm-modules/pomo.nix;
+      hmModules.default = self.hmModules.pomo;
+
+      packages = forAllSystems
+        (system:
+          let
+            pkgs = import nixpkgs { inherit system; };
+            all = import ./nix/pkgs/default.nix { inherit pkgs; };
+          in
+          all // { default = all.waybar-widgets; });
     };
 }
