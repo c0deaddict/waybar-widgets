@@ -45,16 +45,18 @@ func (w widget) run() error {
 	ch := make(chan ping.Packet)
 	go w.loop(ch)
 
-	var pinger *ping.Pinger
 	for {
-		var err error
-		pinger, err = ping.NewPinger(w.host)
-		if err == nil {
-			break
-		} else {
-			log.Error().Err(err).Msg("new pinger")
-			time.Sleep(w.interval)
-		}
+		// Running pinger can fail if there is no network.
+		err := w.tryRun(ch)
+		log.Error().Err(err).Msg("pinger run")
+		time.Sleep(w.interval)
+	}
+}
+
+func (w widget) tryRun(ch chan ping.Packet) error {
+	pinger, err := ping.NewPinger(w.host)
+	if err != nil {
+		return fmt.Errorf("create pinger: %v", err)
 	}
 
 	pinger.Interval = w.interval
@@ -62,15 +64,7 @@ func (w widget) run() error {
 		ch <- *pkg
 	}
 
-	// Running pinger can fail if there is no network, retry until it succeeds.
-	for {
-		err := pinger.Run()
-		if err == nil {
-			return nil
-		}
-		log.Error().Err(err).Msg("pinger run")
-		time.Sleep(w.interval)
-	}
+	return pinger.Run()
 }
 
 func (w widget) loop(ch chan ping.Packet) {
