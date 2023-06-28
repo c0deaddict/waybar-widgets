@@ -6,7 +6,7 @@ buildGoModule rec {
 
   src = ../..;
 
-  vendorSha256 = "sha256-SaXmFVfb+BHrPh3gYA3C3dheZn83Cz6ShWigbzEedZE=";
+  vendorSha256 = "sha256-37PbRnArjdhq2bRCJFJa4xDyuPV8uRvtA9wW6zXTgKc=";
 
   subPackages = [ "cmd/waybar-widgets" ];
 
