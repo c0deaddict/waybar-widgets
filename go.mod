@@ -6,8 +6,9 @@ require (
 	github.com/coreos/go-systemd v0.0.0-20191104093116-d3cd4ed1dbcf
 	github.com/go-ping/ping v1.1.0
 	github.com/joshuarubin/go-sway v1.2.0
-	github.com/rs/zerolog v1.28.0
-	github.com/urfave/cli/v2 v2.14.1
+	github.com/pkg/errors v0.9.1
+	github.com/rs/zerolog v1.29.1
+	github.com/urfave/cli/v2 v2.25.7
 )
 
 require (
